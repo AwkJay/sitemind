@@ -108,6 +108,21 @@ ANTHROPIC_MODEL_SMART=claude-sonnet-4-6
 
 Keys only affect prose and semantic search — **never a verdict**.
 
+**Optional — LLM document extraction (no API key needed).** The compliance upload can read parameters
+out of *unseen* phrasing (not just anticipated wording) using Claude via the Claude Agent SDK, on your
+Claude Code **subscription** — not a metered key. Every value the model returns passes a deterministic
+span-verification gate (the quote must be literally in the document and contain the value) before it
+reaches the check, so the zero-hallucination guarantee holds and the regex path stays as the fallback.
+
+```bash
+cd backend && VIRTUAL_ENV=.venv uv pip install claude-agent-sdk   # needs the `claude` CLI on PATH
+claude setup-token                                                # paste result into backend/.env:
+#   CLAUDE_CODE_OAUTH_TOKEN=...
+#   LLM_EXTRACTION_ENABLED=1
+```
+
+With the flag unset, extraction is the deterministic regex path — the default, and what the demo records.
+
 ## Features
 
 - **Compliance Agent** (`/compliance`) — upload a DBR/submittal, get NCRs with a cited clause, the
