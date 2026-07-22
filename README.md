@@ -1,153 +1,150 @@
-# SiteMind — AI Intelligence Platform for Data-Centre EPC Delivery
+# SiteMind — AI intelligence layer for data-centre EPC delivery
 
-SiteMind is an automated **senior-structural-reviewer** for data-centre construction projects. It
-reads a Design Basis Report or submittal, extracts each engineering parameter **with its exact
-source sentence**, checks it against the **real, digitised Indian code clause** that governs it,
-and returns non-conformances, a cited project copilot, schedule-risk forecasting, supply-chain
-visibility, and commissioning QA — in seconds, with a measured zero-hallucination citation rate.
+SiteMind reads a Design Basis Report or a vendor submittal, pulls out each engineering
+parameter **with the exact sentence it came from**, and checks it against the **real Indian
+code clause** that governs it. In seconds you get cited non-conformances, a project copilot,
+schedule-risk forecasts, supply-chain visibility, and commissioning QA.
 
-**Live app:** [AWNI.IN](https://sitemind.awni.in/) · **Docs index:** [`docs/features.md`](docs/features.md) ·
-**Architecture:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+**Live app:** https://sitemind.awni.in
 
-## Why it's different
+## The one idea that matters
 
-Most AI compliance tools either hallucinate citations or hide their reasoning behind an LLM
-"trust me." SiteMind doesn't:
-- **Every citation resolves to real text** — digitised Indian Standards (IS 3043, IS 8623, etc.) and CEA regulations, never paraphrased from a model's memory.
-- **Two layers — the model perceives and explains; it never decides.** An LLM (Claude Sonnet 4.6,
-  via the Claude Agent SDK) reads each submittal and pulls every parameter *with its verbatim source
-  span*, behind a deterministic span-verification gate; the pass/fail **decision** is deterministic
-  Python evaluated against a cited clause — auditable, reproducible, impossible to fake.
-- **Every number is computed, not asserted.** ROI, cost-at-risk, schedule impact, and retrieval
-  confidence all come from real formulas over real inputs.
-- **21 eval scripts** (18 in `backend/eval/`, 3 more in the standalone Codebook service), each
-  reported separately — see [`docs/features.md`](docs/features.md#12-automated-eval-suite-21-scripts)
-  for the full per-script breakdown, including the flagship result: **100% rule-decision accuracy
-  vs. a 59% naive baseline (n=41)**.
+Most AI compliance tools either hallucinate a citation or bury the decision inside a model
+that just says "trust me." SiteMind splits the work in two so it can't do either:
 
-## What's real vs. representative
+- **The model perceives and explains.** Claude (Sonnet 4.6, via the Claude Agent SDK) reads the
+  document, extracts each value with its source span, and writes the finding in plain English.
+- **Deterministic Python decides.** The pass/fail verdict is a plain threshold against a cited
+  clause. The model never makes the call, so a verdict or a citation can never be faked.
 
-- **Real:** every IS/CEA clause citation, the compliance decision logic, all 21 evals, document
-  ingestion (an uploaded PDF/DOCX is actually parsed, with mandatory abstention on anything not
-  confidently extracted), and the CPM schedule-impact recomputation.
-- **Representative:** the pre-loaded project documents and schedule are synthetic, modelled on
-  real public Indian data-centre tenders. The standards and the logic that checks them are real;
-  so is anything you upload yourself.
-
-## Running the servers
-
-**Prerequisites:** Python **3.12** (the pinned numpy/pandas wheels don't build on 3.13/3.14) and
-Node 18+. Every key below is **optional** — the app degrades gracefully, and the pass/fail
-*decision* is deterministic whether or not any key is set.
-
-### 1 · Minimal — fully offline, no keys
-Compliance and Commissioning QA work end-to-end with **no API keys** (deterministic extraction +
-deterministic checks against the cited clauses).
-
-```bash
-# Terminal 1 — backend  (creates .venv, installs deps, serves :8000)
-cd backend && ./run.sh
-curl localhost:8000/api/health          # expect {"status":"ok",...} before starting the frontend
-
-# Terminal 2 — frontend
-cd frontend && npm install && npm run dev   # -> http://localhost:3000
-```
-Open `http://localhost:3000` and check the top-bar status pill: **green** = frontend reached the
-real backend; **red** = wrong API URL or backend down (you'd be seeing mock data, not a real run).
-
-### 2 · Recommended — semantic search (free Hugging Face token)
-**Copilot, Knowledge Base, and Codebook** use MiniLM sentence embeddings served through the
-**Hugging Face Inference API**, which needs a free token (the local torch path was dropped to fit the
-512 MB free-tier). Without it, those three surfaces return a clear *"semantic retrieval needs
-HF_TOKEN"* message instead of degrading silently — Compliance and Commissioning are unaffected.
-
-1. Create a free token (read scope) at **https://huggingface.co/settings/tokens**
-2. Add it to `backend/.env`:
-   ```env
-   HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxx
-   ```
-3. Start all three services, with the retrieval + Codebook flags on:
-   ```bash
-   # Terminal 1 — Codebook standards service (:8010)
-   cd standards-service && ./run.sh
-
-   # Terminal 2 — backend with Knowledge Base + Codebook mounted (:8000)
-   cd backend && CODEBOOK_ENABLED=1 RETRIEVAL_ENABLED=1 ./run.sh
-
-   # Terminal 3 — frontend (:3000)
-   cd frontend && npm run dev
-   ```
-   `RETRIEVAL_ENABLED=1` mounts the Knowledge Base (`/api/retrieval/*`); `CODEBOOK_ENABLED=1` mounts
-   the Codebook API (`/api/codebook/*`) and requires the standards service on :8010.
-
-### 3 · Optional — LLM-written prose & answers (Anthropic)
-The intelligence layer (Perceive / Explain) uses Claude when a key is set; with no key it falls back
-to deterministic templates. Add to `backend/.env`:
-```env
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
-ANTHROPIC_MODEL_SMART=claude-sonnet-4-6
-```
-(OpenAI is also supported via `OPENAI_API_KEY`.) Keys only affect prose and semantic search — **never
-a verdict**: the pass/fail decision stays deterministic Python against a cited clause.
-
-Windows instructions and a troubleshooting table live in **[`docs/SETUP.md`](docs/SETUP.md)**.
-
-## Features
-
-- **Compliance Agent** (`/compliance`, HERO) — upload a Design Basis Report or submittal, get NCRs
-  with a cited clause, the exact source span, and a confidence-scored Action Brief.
-- **Project Copilot** (`/copilot`) — cross-document Q&A with citations, hybrid BM25+dense
-  retrieval, "seen-before RFI" detection, abstains below a similarity floor.
-- **Schedule Risk** (`/schedule`) — CPM scheduling + leading-indicator risk detection (procurement,
-  weather, workforce) with recomputed finish impact and 3-agent mitigation.
-- **Supply Chain Visibility** (`/supply-chain`) — multi-tier shipment tracking, delay propagation,
-  root-cause attribution, equipment-spec compliance, severity-tiered alerts.
-- **Commissioning QA** (`/commissioning`) — cooling test-log CSV → deterministic pass/allowable/fail
-  vs. a thermal envelope → NCRs → exportable as-commissioned quality package.
-- **Project Timeline** (`/timeline`) — every NCR/RFI/risk/alert/finding from the other five pillars
-  as one cross-linked, sorted event list. Pure aggregation, zero new judgment.
-- **Knowledge Graph** (`/graph`) — equipment → spec → standard → RFI graph over the same structured
-  data the other pillars use.
-- **Codebook** (`/codebook`, `standards-service/`) — a standalone, MCP-consumable standards service
-  any agent can query, plus a Console (`/codebook/console`) for browsing/uploading corpora.
-- **Overview** (`/`) — platform-wide ROI per pillar with its computed basis, and a cost-at-risk
-  panel showing every term of the formula, not just a headline number.
-
-Full detail + honest caveats per feature: [`docs/features.md`](docs/features.md).
+Every citation resolves to real primary-source text — digitised IS/CEA codes, never paraphrased
+from a model's memory. Every number in the app is computed by a real eval, not asserted: the
+flagship is **100% rule-decision accuracy vs a 58.5% naive baseline (n=41)**, with a measured
+**0% citation-hallucination rate**.
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    UI["Command Center — browser<br/>Next.js · TypeScript · Tailwind"]
+    API["FastAPI backend — application and intelligence layer<br/>compliance · copilot · schedule · supply_chain · commissioning · timeline · impact"]
+    CB["Codebook<br/>FastMCP · 6,206 verified chunks · 17 IS/CEA codes"]
+    KB["Knowledge Base<br/>BM25 + dense · RRF · abstains below a floor"]
+    KG["Knowledge Graph<br/>NetworkX · deterministic"]
+
+    UI -->|REST| API
+    API -->|MCP client| CB
+    API -->|hybrid retrieve| KB
+    API -->|graph lookup| KG
 ```
-Next.js Command Center  ──REST──>  FastAPI
-  (Blueprint design system)          ├─ timeline     (pure aggregation, zero new judgment)
-                                      ├─ compliance   (deterministic checks + cited clauses)
-                                      ├─ copilot      (hybrid retrieval, cited, abstains)
-                                      ├─ schedule     (CPM + leading-indicator rules)
-                                      ├─ supply_chain (delay propagation + root cause)
-                                      ├─ commissioning (thermal-envelope threshold checks)
-                                      ├─ impact / cost_risk (ROI + deterministic cost-at-risk)
-                                      └─ standards    (real digitised IS + electrical clauses)
+
+And how a single compliance call is made — a model only ever touches the outer two stages:
+
+```mermaid
+flowchart LR
+    A["1 · Perceive<br/>Claude extracts each value<br/>and its source span, or abstains"]
+    B["2 · Decide<br/>Python checks the value against<br/>the cited clause — the model<br/>never touches this step"]
+    C["3 · Explain<br/>Claude writes the finding<br/>in plain English"]
+    A --> B --> C
 ```
+
 **Stack:** Python · FastAPI · scikit-learn · MiniLM embeddings (HF Inference API) · NetworkX ·
-Next.js 14 · TypeScript · Tailwind · Recharts. An **intelligence layer** (Claude Sonnet 4.6 via the
-Claude Agent SDK) reads, extracts, and explains; a **guarantee layer** (deterministic Python) owns
-the verdict and citation. No model training anywhere, and deliberately no agent-orchestration
-framework (why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)).
+Next.js 14 · TypeScript · Tailwind. No model training anywhere, and deliberately no
+agent-orchestration framework — the guarantee layer is plain, auditable Python.
 
-Full diagram-as-code with every route and data dependency: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+## What's real vs representative
 
-## Known caveats (worth disclosing, not hiding)
+- **Real:** every IS/CEA clause and the text it resolves to, the compliance decision logic, all
+  21 eval scripts, document parsing (with mandatory abstention on anything it can't confidently
+  extract), and the critical-path schedule recomputation.
+- **Representative:** the pre-loaded project documents and schedule are synthetic, modelled on
+  public Indian data-centre tenders. The standards and the logic that checks them are real — and
+  so is anything you upload yourself.
 
-- Some clause `verify_url`s point at a dev-machine host, not a public URL — citations resolve to
-  real clause *text* in-app regardless. Don't assume every link is independently clickable yet.
-- Semantic search (Copilot, Knowledge Base, Codebook) needs a free `HF_TOKEN`; Compliance and
-  Commissioning run with no keys at all. See the run instructions above.
-- ROI figures (≈20 engineer-hrs & ≈₹15L per issue) are labeled assumptions, not measurements.
-- All project data is synthetic/representative, modelled on public tenders — disclosed, not hidden.
+## Running it
+
+**Prerequisites:** Python **3.12** (the pinned numpy/pandas wheels don't build on 3.13+) and
+Node 18+. Every API key is optional — the app degrades gracefully, and the pass/fail decision
+is deterministic with or without one.
+
+### 1 · Minimal — fully offline, no keys
+
+Compliance and Commissioning QA work end-to-end with no keys.
+
+```bash
+cd backend && ./run.sh                       # :8000  (creates .venv, installs deps)
+cd frontend && npm install && npm run dev    # :3000
+```
+
+Open http://localhost:3000 and watch the top-bar pill: **green** = talking to the real backend,
+**red** = you're seeing mock data (wrong API URL or backend down).
+
+### 2 · Add semantic search (free Hugging Face token)
+
+Copilot, Knowledge Base, and Codebook use MiniLM embeddings through the HF Inference API. Drop a
+free token (read scope, from huggingface.co/settings/tokens) into `backend/.env`:
+
+```env
+HF_TOKEN=hf_xxxxxxxx
+```
+
+Then run all three services:
+
+```bash
+cd standards-service && ./run.sh                               # :8010  (Codebook)
+cd backend && CODEBOOK_ENABLED=1 RETRIEVAL_ENABLED=1 ./run.sh   # :8000
+cd frontend && npm run dev                                      # :3000
+```
+
+### 3 · Add LLM prose (optional)
+
+Claude writes the findings and answers when a key is set; with no key it falls back to
+deterministic templates.
+
+```env
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+ANTHROPIC_MODEL_SMART=claude-sonnet-4-6
+```
+
+Keys only affect prose and semantic search — **never a verdict**.
+
+## Features
+
+- **Compliance Agent** (`/compliance`) — upload a DBR/submittal, get NCRs with a cited clause, the
+  exact source span, and a confidence-scored action brief.
+- **Project Copilot** (`/copilot`) — cross-document Q&A with citations; guardrailed hybrid
+  retrieval (BM25 + dense, reciprocal-rank fused); abstains below a floor instead of guessing.
+- **Schedule Risk** (`/schedule`) — CPM + leading-indicator rules (procurement, weather,
+  workforce) with recomputed finish impact and three mitigation agents.
+- **Supply Chain** (`/supply-chain`) — multi-tier shipment tracking, delay propagation,
+  root-cause attribution, severity-tiered alerts.
+- **Commissioning QA** (`/commissioning`) — cooling test-log CSV → pass/allowable/fail against an
+  ASHRAE thermal envelope → exportable quality package.
+- **Timeline** (`/timeline`) — every NCR, RFI, risk, and alert from the five pillars on one
+  cross-linked view. Pure aggregation, zero new judgement.
+- **Knowledge Graph** (`/graph`) — equipment → spec → standard → RFI, deterministic (NetworkX)
+  and clickable, not a vector guess.
+- **Codebook** (`/codebook`, `standards-service/`) — a standalone, MCP-consumable standards
+  service any agent can query, plus a console for browsing corpora.
+
+## Evals
+
+21 re-runnable eval scripts (18 in `backend/eval/`, 3 in the Codebook service), each reported on
+its own — never blended into a single vanity score.
+
+```bash
+cd backend && source .venv/bin/activate && python -m eval.run_eval
+```
+
+## Known caveats (disclosed, not hidden)
+
+- Some clause verify-links point at a dev host; the clause *text* still resolves in-app.
+- Semantic search needs a free `HF_TOKEN`; Compliance and Commissioning need no keys at all.
+- ROI figures (~20 engineer-hrs and ~₹15L per issue) are labelled assumptions, not measurements.
+- All project data is synthetic/representative, modelled on public tenders.
 
 ## Roadmap
 
-The compliance engine is clause-driven: every check maps to a real digitised clause, so breadth
-scales by adding clauses, not by retraining anything. Planned next: IS 875 Parts 1/2/4/5, IS 13920
-(ductile seismic detailing), IS 800 (steel), IS 1893 Part 4, and NBC 2016 (fire/egress/electrical —
-the most-cited code in real data-centre permitting).
+Every check maps to a real digitised clause, so coverage grows by **adding clauses, not
+retraining a model**. Next in line: IS 875 (wind), IS 13920 (seismic detailing), IS 800 (steel),
+and NBC 2016 (fire and egress).
